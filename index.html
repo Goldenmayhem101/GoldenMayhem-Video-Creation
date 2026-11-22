@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block;width:1080px;height:1920px}</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { THREE, createStage, W, H } from '/src/toonkit.js';
+import { buildWorld, aimSun } from '/src/world.js';
+import { SHOTS } from '/src/shots.js';
+const cv = document.getElementById('c'); cv.style.width = W + 'px'; cv.style.height = H + 'px';
+const stage = createStage(cv);
+window.SHOT_IDS = Object.keys(SHOTS);
+window.renderShot = (id, t = 1) => {
+  const S = SHOTS[id]; const w = buildWorld(stage, S.light, { sunAz: S.sunAz, sunEl: S.sunEl });
+  const o = S.setup(w, stage, t); aimSun(w, o.sunTarget || new THREE.Vector3(0, 5, 0), o.shadowSize || 60);
+  const cam = stage.camera; cam.fov = o.fov; cam.position.copy(o.pos); cam.position.lerp(o.look, o.push ?? t * .012);
+  cam.up.set(Math.sin(o.roll || 0), Math.cos(o.roll || 0), 0); cam.lookAt(o.look); cam.updateProjectionMatrix(); cam.updateMatrixWorld();
+  const U = stage.bokeh.uniforms; U.focus.value = cam.position.distanceTo(o.focusAt || o.look); U.aperture.value = o.aperture ?? .0007; U.maxblur.value = o.maxblur ?? .012;
+  w.wt.offset.set(t * .03, t * .02);
+  stage.composer.render(); return true;
+};
+window.ready = true;
+</script></body></html>
