@@ -21,7 +21,7 @@ function jit(hex, r, dh = .02, ds = .06, dl = .06) {
   const cl = (v) => Math.max(0, Math.min(100, v * 100)).toFixed(1);
   return `hsl(${(((o.h + (r() - .5) * dh) * 360 + 360) % 360).toFixed(1)} ${cl(o.s + (r() - .5) * ds)}% ${cl(o.l + (r() - .5) * dl)}%)`;
 }
-function canvasTex(w, h, draw) {
+export function canvasTex(w, h, draw) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   draw(c.getContext('2d'), w, h);
   const t = new THREE.CanvasTexture(c);
@@ -173,7 +173,7 @@ export function sunDir(az, el) { const a = az * Math.PI / 180, e = el * Math.PI 
 export function makeSky(L, sunDirection) {
   const m = new THREE.Mesh(new THREE.SphereGeometry(900, 48, 24), new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { top: { value: new THREE.Color(L.skyTop) }, hor: { value: new THREE.Color(L.skyHor) }, sun: { value: sunDirection.clone() }, sunCol: { value: new THREE.Color(L.sun) }, glow: { value: L === LIGHTS.golden ? 1.0 : 0.35 } },
+    uniforms: { top: { value: new THREE.Color(L.skyTop) }, hor: { value: new THREE.Color(L.skyHor) }, sun: { value: sunDirection.clone() }, sunCol: { value: new THREE.Color(L.sun) }, glow: { value: L.glow ?? (L === LIGHTS.golden ? 1.0 : 0.35) } },
     vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
     fragmentShader: `uniform vec3 top; uniform vec3 hor; uniform vec3 sun; uniform vec3 sunCol; uniform float glow; varying vec3 vP;
       void main(){ float t = clamp(vP.y,0.0,1.0); vec3 c = mix(hor, top, pow(t,0.55)); c = mix(c, hor*1.06, smoothstep(0.22,0.0,t)*0.6);
@@ -195,7 +195,7 @@ function cloudTex(cols, seed) {
   });
 }
 export function makeClouds(L, seed = 11, n = 18) {
-  const r = rng(seed), g = new THREE.Group(), cols = L === LIGHTS.golden ? CLOUD_COLS.golden : CLOUD_COLS.day;
+  const r = rng(seed), g = new THREE.Group(), cols = L.cloudCols ?? (L === LIGHTS.golden ? CLOUD_COLS.golden : CLOUD_COLS.day);
   const mats = [0, 1, 2].map((i) => new THREE.MeshBasicMaterial({ map: cloudTex(cols, seed + i * 7), transparent: true, depthWrite: false, fog: false }));
   for (let i = 0; i < n; i++) {
     const a = r() * Math.PI * 2, R = 380 + r() * 260, w = 130 + r() * 190, m = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 2), mats[i % 3]);
@@ -208,7 +208,7 @@ export function makeSunRays(L, sd) {
     g.translate(w / 2, h / 2); const r = rng(4);
     for (let k = 0; k < 28; k++) { const a = (k / 28) * Math.PI * 2 + r() * .1, wd = .035 + r() * .05; const gr = g.createLinearGradient(0, 0, Math.cos(a) * 256, Math.sin(a) * 256); gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a - wd) * 256, Math.sin(a - wd) * 256); g.lineTo(Math.cos(a + wd) * 256, Math.sin(a + wd) * 256); g.closePath(); g.fill(); }
   });
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshBasicMaterial({ map: t, color: L.sun, transparent: true, opacity: L === LIGHTS.golden ? .55 : .22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshBasicMaterial({ map: t, color: L.sun, transparent: true, opacity: L.rays ?? (L === LIGHTS.golden ? .55 : .22), blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   m.position.copy(sd).multiplyScalar(800); m.lookAt(0, 0, 0); m.renderOrder = -5; return m;
 }
 
