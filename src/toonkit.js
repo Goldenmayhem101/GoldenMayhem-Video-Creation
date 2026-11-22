@@ -176,7 +176,7 @@ export function makeSky(L, sunDirection) {
     uniforms: { top: { value: new THREE.Color(L.skyTop) }, hor: { value: new THREE.Color(L.skyHor) }, sun: { value: sunDirection.clone() }, sunCol: { value: new THREE.Color(L.sun) }, glow: { value: L === LIGHTS.golden ? 1.0 : 0.35 } },
     vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
     fragmentShader: `uniform vec3 top; uniform vec3 hor; uniform vec3 sun; uniform vec3 sunCol; uniform float glow; varying vec3 vP;
-      void main(){ float t = clamp(vP.y,0.0,1.0); vec3 c = mix(hor, top, pow(t,0.55));
+      void main(){ float t = clamp(vP.y,0.0,1.0); vec3 c = mix(hor, top, pow(t,0.55)); c = mix(c, hor*1.06, smoothstep(0.22,0.0,t)*0.6);
         float d = max(dot(normalize(vP), normalize(sun)),0.0);
         c += sunCol*(pow(d,6.0)*0.22*glow + pow(d,60.0)*0.5*glow);
         c = mix(c, vec3(1.0,0.97,0.88), smoothstep(0.9985,0.9992,d));
@@ -184,15 +184,32 @@ export function makeSky(L, sunDirection) {
   }));
   m.renderOrder = -10; return m;
 }
-export function makeClouds(L, seed = 11, n = 9) {
-  const r = rng(seed), g = new THREE.Group();
-  const mat = toon(L.cloud, null, { fog: false });
+const CLOUD_COLS = { day: [0xffffff, 0xe3ebfb, 0xb3c1e6], golden: [0xffe2bd, 0xffb08f, 0x8b69a8] };
+function cloudTex(cols, seed) {
+  const r = rng(seed), css = (n) => '#' + n.toString(16).padStart(6, '0');
+  return canvasTex(512, 256, (g, w, h) => {
+    g.clearRect(0, 0, w, h); const n = 9, bl = [];
+    for (let i = 0; i < n; i++) { const u = i / (n - 1), m = Math.sin(u * Math.PI); bl.push({ x: 64 + u * (w - 128) + (r() - .5) * 16, y: h * .6 - m * h * .16 + (r() - .5) * 14, r: 30 + m * 38 + r() * 14 }); }
+    const paint = (col, dy, k, top) => { g.save(); g.beginPath(); g.rect(0, 0, w, top); g.clip(); g.fillStyle = col; for (const q of bl) { g.beginPath(); g.arc(q.x, q.y + dy, q.r * k, 0, 7); g.fill(); } g.restore(); };
+    paint(css(cols[2]), 10, 1, h * .74); paint(css(cols[1]), 0, .95, h * .72); paint(css(cols[0]), -13, .76, h * .66);
+  });
+}
+export function makeClouds(L, seed = 11, n = 18) {
+  const r = rng(seed), g = new THREE.Group(), cols = L === LIGHTS.golden ? CLOUD_COLS.golden : CLOUD_COLS.day;
+  const mats = [0, 1, 2].map((i) => new THREE.MeshBasicMaterial({ map: cloudTex(cols, seed + i * 7), transparent: true, depthWrite: false, fog: false }));
   for (let i = 0; i < n; i++) {
-    const c = new THREE.Group(), a = r() * Math.PI * 2, R = 300 + r() * 160, k = 14 + r() * 16;
-    for (let j = 0; j < 6; j++) { const s = ell(k * (.55 + r() * .5), k * (.38 + r() * .3), k * (.5 + r() * .3), mat, { px: 0, shadow: false }); s.position.set((j - 2.5) * k * .75, (r() - .3) * k * .35, (r() - .5) * k * .3); c.add(s); }
-    c.position.set(Math.cos(a) * R, 70 + r() * 90, Math.sin(a) * R); c.lookAt(0, c.position.y, 0); g.add(c);
+    const a = r() * Math.PI * 2, R = 380 + r() * 260, w = 130 + r() * 190, m = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 2), mats[i % 3]);
+    m.position.set(Math.cos(a) * R, 50 + r() * 150, Math.sin(a) * R); m.lookAt(0, m.position.y * .6, 0); m.renderOrder = -6; g.add(m);
   }
   return g;
+}
+export function makeSunRays(L, sd) {
+  const t = canvasTex(512, 512, (g, w, h) => {
+    g.translate(w / 2, h / 2); const r = rng(4);
+    for (let k = 0; k < 28; k++) { const a = (k / 28) * Math.PI * 2 + r() * .1, wd = .035 + r() * .05; const gr = g.createLinearGradient(0, 0, Math.cos(a) * 256, Math.sin(a) * 256); gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(a - wd) * 256, Math.sin(a - wd) * 256); g.lineTo(Math.cos(a + wd) * 256, Math.sin(a + wd) * 256); g.closePath(); g.fill(); }
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshBasicMaterial({ map: t, color: L.sun, transparent: true, opacity: L === LIGHTS.golden ? .55 : .22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  m.position.copy(sd).multiplyScalar(800); m.lookAt(0, 0, 0); m.renderOrder = -5; return m;
 }
 
 /* ------------------------------------------------------------------ characters */
@@ -201,18 +218,20 @@ const HEAD = (() => { const g = new THREE.SphereGeometry(1, 34, 22), p = g.attri
   g.computeVertexNormals(); return g; })();
 
 export function makeCharacter(o = {}) {
-  const { coat = 0xc8323a, trim = 0xf4ebcf, pants = 0x2f3560, skin = 0xf6c49c, hat = 'shako', mood = 'smile', s = 1, hair = 0x5c3a26, boot = 0x2a2230, belts = true } = o;
+  const { coat = 0xc8323a, trim = 0xf4ebcf, pants = 0x2f3560, skin = 0xf6c49c, hat = 'shako', mood = 'smile', s = 1, hair = 0x5c3a26, boot = 0x2a2230, belts = true, fat = 1, dress = false, hairStyle = 'short', cuffs = (o.hat ?? 'shako') === 'shako' } = o;
   const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
   const mCoat = toon(coat), mPants = toon(pants), mSkin = toon(skin), mTrim = toon(trim), mBoot = toon(boot), dark = flat(0x151018);
-  const torso = ell(.31, .40, .23, mCoat, { px: 3 }); torso.position.y = .98; body.add(torso);
+  const torso = ell(.31 * fat, .40, .23 * fat, mCoat, { px: 3 }); torso.position.y = .98; body.add(torso);
   if (belts) for (const sgn of [-1, 1]) { const b = box(.055, .66, .02, mTrim, { px: 0 }); b.position.set(sgn * .02, .99, .218); b.rotation.z = sgn * .42; body.add(b); }
-  const hips = ell(.27, .19, .2, mPants, { px: 3 }); hips.position.y = .64; body.add(hips);
+  const hips = ell(.27 * fat, .19, .2 * fat, mPants, { px: 3 }); hips.position.y = .64; body.add(hips);
+  if (dress) { const sk = cyl(.2 * fat, .4 * fat, .52, mCoat, { px: 3 }, 24); sk.position.y = .52; body.add(sk); const hm = cyl(.405 * fat, .405 * fat, .05, mTrim, { px: 2.4 }, 24); hm.position.y = .27; body.add(hm); }
   const legs = [], arms = [];
   for (const sgn of [-1, 1]) {
     const pv = new THREE.Group(); pv.position.set(sgn * .11, .62, 0);
     const l = cyl(.058, .052, .5, mPants, { px: 3 }); l.position.y = -.25; pv.add(l);
     const b = ell(.088, .066, .155, mBoot, { px: 3 }); b.position.set(0, -.54, .05); pv.add(b); body.add(pv); legs.push(pv);
-    const av = new THREE.Group(); av.position.set(sgn * .32, 1.2, 0);
+    const av = new THREE.Group(); av.position.set(sgn * .32 * fat, 1.2, 0);
+    if (cuffs) { const cf = cyl(.058, .058, .07, mTrim, { px: 2.4 }); cf.position.y = -.4; av.add(cf); }
     const a = cyl(.05, .045, .46, mCoat, { px: 3 }); a.position.y = -.23; av.add(a);
     const hnd = ell(.075, .085, .06, mTrim, { px: 3 }); hnd.position.y = -.5; av.add(hnd); body.add(av); arms.push(av);
   }
@@ -240,6 +259,7 @@ export function makeCharacter(o = {}) {
   if (mood === 'shock') { mouth.scale.set(.032, .052, .016); mouth.position.set(0, -.1, .243); }
   else { mouth.position.set(0, mood === 'sad' ? -.15 : -.085, .243); mouth.rotation.z = mood === 'sad' ? 0 : Math.PI; mouth.scale.setScalar(mood === 'smirk' ? .8 : 1); }
   head.add(mouth);
+  const talkMouth = ell(.045, .03, .015, flat(0x5a1e2a), { px: 1.2, shadow: false }); talkMouth.position.set(0, -.1, .243); talkMouth.visible = false; head.add(talkMouth);
   if (hat === 'shako') {
     const h1 = cyl(.17, .15, .27, toon(0x23233a), { px: 3 }); h1.position.y = .30; head.add(h1);
     const bd = cyl(.156, .156, .05, toon(0xc8323a), { px: 0 }); bd.position.y = .19; head.add(bd);
@@ -252,11 +272,18 @@ export function makeCharacter(o = {}) {
   } else if (hat === 'hair') {
     const hr = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI * .55), toon(hair)); hr.scale.set(.3, .27, .29); hr.position.y = .035; hr.castShadow = true; ink(hr, 3); head.add(hr);
   }
-  g.scale.setScalar(s); g.userData = { eyes, body, head, legL: legs[0], legR: legs[1], armR: arms[0], armL: arms[1], torso };
+  const hm = (c) => toon(c);
+  if (hat === 'top') { const t1 = cyl(.16, .16, .34, hm(0x1d1d26), { px: 3 }); t1.position.y = .36; head.add(t1); const t2 = cyl(.27, .27, .03, hm(0x1d1d26), { px: 3 }); t2.position.y = .2; head.add(t2); const t3 = cyl(.165, .165, .05, hm(0xc8323a), { px: 0 }); t3.position.y = .24; head.add(t3); }
+  if (hat === 'bowler') { const b1 = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI * .5), hm(0x3a2a22)); b1.scale.set(.25, .22, .25); b1.position.y = .17; b1.castShadow = true; ink(b1, 3); head.add(b1); const b2 = cyl(.29, .29, .025, hm(0x3a2a22), { px: 3 }); b2.position.y = .16; head.add(b2); }
+  if (hat === 'straw') { const s1 = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI * .5), hm(0xe8c870)); s1.scale.set(.26, .17, .26); s1.position.y = .19; s1.castShadow = true; ink(s1, 3); head.add(s1); const s2 = cyl(.44, .44, .02, hm(0xe8c870), { px: 3 }); s2.position.y = .17; head.add(s2); const s3 = cyl(.262, .262, .04, hm(0xc8323a), { px: 0 }); s3.position.y = .2; head.add(s3); }
+  if (hat === 'hair' && hairStyle === 'long') { const lh = ell(.3, .42, .2, hm(hair), { px: 3 }); lh.position.set(0, -.18, -.12); head.add(lh); }
+  if (hat === 'hair' && hairStyle === 'bun') { const bn = ell(.1, .1, .1, hm(hair), { px: 3 }); bn.position.set(0, .3, -.1); head.add(bn); }
+  g.scale.setScalar(s); g.userData = { mouth: mood === 'shock' ? null : mouth, talkMouth, eyes, body, head, legL: legs[0], legR: legs[1], armR: arms[0], armL: arms[1], torso };
   return g;
 }
-export function pose(g, { walk = 0, arms = 'swing', lean = .07, bounce = .05, legs = 'walk', tilt = 0, blink = 0 } = {}) {
+export function pose(g, { walk = 0, arms = 'swing', lean = .07, bounce = .05, legs = 'walk', tilt = 0, blink = 0, talk = 0 } = {}) {
   const u = g.userData, sn = Math.sin(walk);
+  if (u.mouth) { u.talkMouth.visible = talk > 0; u.mouth.visible = !(talk > 0); if (talk > 0) u.talkMouth.scale.set(.045, .008 + .04 * talk, .015); }
   for (const e of u.eyes) e.scale.y = e.userData.base * (1 - .92 * blink);
   if (legs === 'walk') { u.legL.rotation.x = sn * .6; u.legR.rotation.x = -sn * .6; }
   else if (legs === 'sit') { u.legL.rotation.x = u.legR.rotation.x = -1.45; }

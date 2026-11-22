@@ -15,9 +15,18 @@ Code is original; the look was informed by general style research only, no third
 ## Files
 - src/toonkit.js : textures, toon materials, ink outlines, characters + poses, light presets (day/golden), sky, post stack
 - src/world.js   : houses, bridge, trees, props, river, banks, town builder
-- src/shots.js   : the shots. Each shot is plain code: characters, camera pos/look/fov/roll, blur, animation by time t
+- src/shots.js   : the shots (hook, snap [animated bridge break], river, golden, closeup, cast [character lineup]). Each shot is plain code: characters, camera pos/look/fov/roll, blur, animation by time t
 - index.html     : exposes window.renderShot(id, t) (t = seconds)
 - render.mjs     : stills and video (frames -> ffmpeg)
+- tools/make_sound.py : code-made music bed + simple SFX (step, crack, clatter, splash, whoosh, pop) from an events.json
 - examples/      : sample frames and a 3 s preview
 
 See PIPELINE.md for how to turn a script into a finished short.
+
+## Characters
+makeCharacter options: coat, pants, trim, skin, hat ('shako','cap','hair','top','bowler','straw','none'), hair, hairStyle ('short','long','bun'),
+dress, fat (body width), moustache, mood ('smile','smirk','sad','shock','angry'), s (scale). pose() takes walk, arms ('swing','up','side','rope'), legs ('walk','sit','jump'), blink, talk (0-1 mouth open).
+
+## Sound
+Best: real music (e.g. VidIQ music generator, or the user's own files) plus real SFX files, mixed with ffmpeg under the voice.
+Fallback: tools/make_sound.py (synthesized, simple).

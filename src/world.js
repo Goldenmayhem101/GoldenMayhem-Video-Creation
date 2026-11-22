@@ -1,7 +1,7 @@
 // world.js - town, bridge, river, lighting built from toonkit pieces (all original geometry)
 import {
   THREE, INK, LIGHTS, sunDir, rng, toon, flat, box, cyl, ell, mesh, ink,
-  texPlaster, texBrick, texRoof, texPlanks, texStone, texGrass, texCobble, texWater, makeSky, makeClouds, inkUniforms,
+  texPlaster, texBrick, texRoof, texPlanks, texStone, texGrass, texCobble, texWater, makeSky, makeClouds, makeSunRays, inkUniforms,
 } from './toonkit.js';
 
 const css = (n) => '#' + n.toString(16).padStart(6, '0');
@@ -120,7 +120,7 @@ export function buildWorld(stage, lightName, { sunAz, sunEl, seed = 7 } = {}) {
   const hemi = new THREE.HemisphereLight(L.hemiSky, L.hemiGnd, L.hemiI); scene.add(hemi);
   const sun = new THREE.DirectionalLight(L.sun, L.sunI); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.06; scene.add(sun); scene.add(sun.target);
-  const sky = makeSky(L, sd); scene.add(sky); scene.add(makeClouds(L, seed + 3));
+  const sky = makeSky(L, sd); scene.add(sky); scene.add(makeClouds(L, seed + 3)); scene.add(makeSunRays(L, sd));
   grade.uniforms.uSat.value = L.sat; grade.uniforms.uLift.value = L.lift; grade.uniforms.uLiftCol.value.set(...L.liftCol); grade.uniforms.uVig.value = L.vig; bloom.strength = L.bloom;
 
   // river
@@ -182,4 +182,16 @@ export function buildWorld(stage, lightName, { sunAz, sunEl, seed = 7 } = {}) {
 export function aimSun(world, target, size = 60) {
   const { sun, sunDirection } = world; sun.position.copy(target).addScaledVector(sunDirection, 120); sun.target.position.copy(target);
   const c = sun.shadow.camera; c.left = -size; c.right = size; c.top = size; c.bottom = -size; c.near = 1; c.far = 300; c.updateProjectionMatrix(); sun.target.updateMatrixWorld();
+}
+
+export function addBirds(scene, t, center, seed = 5) {
+  const r = rng(seed), g = new THREE.Group(), m = flat(0x2b2433);
+  for (let i = 0; i < 7; i++) {
+    const b = new THREE.Group(), body = ell(.28, .12, .14, m, { px: 0, shadow: false }); b.add(body);
+    for (const sgn of [-1, 1]) { const pv = new THREE.Group(); const w = box(.12, .035, .95, m, { px: 0, shadow: false }); w.position.z = sgn * .5; pv.add(w); pv.rotation.x = sgn * Math.sin(t * 9 + i * 1.3) * .6; b.add(pv); }
+    const ph = i * 1.7 + r() * 3;
+    b.position.set(center.x + (i % 4) * 4 - 6 + t * 2.2 + Math.sin(ph) * 1.5, center.y + Math.floor(i / 4) * 2.5 + Math.sin(t * 1.5 + ph) * .6, center.z - Math.floor(i / 3) * 3);
+    b.rotation.y = 0; b.scale.setScalar(2.6); g.add(b);
+  }
+  scene.add(g); return g;
 }
